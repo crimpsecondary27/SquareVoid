@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Falling Balls Survival</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #222;
+            font-family: Arial, sans-serif;
+        }
+        #gameCanvas {
+            display: block;
+            background-color: #111;
+        }
+        #scoreDisplay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 24px;
+        }
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 48px;
+            text-align: center;
+            display: none;
+        }
+        #restartBtn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #bossHealth {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: red;
+            font-size: 24px;
+            display: none;
+        }
+        #bossHealthBar {
+            position: absolute;
+            top: 40px;
+            right: 10px;
+            width: 200px;
+            height: 20px;
+            background-color: #333;
+            display: none;
+        }
+        #bossHealthBarFill {
+            height: 100%;
+            width: 100%;
+            background-color: red;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="scoreDisplay">Score: 0</div>
+    <div id="bossHealth">BOSS: </div>
+    <div id="bossHealthBar"><div id="bossHealthBarFill"></div></div>
+    <div id="gameOver">
+        Game Over<br>
+        <span id="finalScore">Score: 0</span><br>
+        <button id="restartBtn">Play Again</button>
+    </div>
+
+    <script>
+        // Game setup
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const gameOverDisplay = document.getElementById('gameOver');
+        const finalScoreDisplay = document.getElementById('finalScore');
+        const restartBtn = document.getElementById('restartBtn');
+        const bossHealthDisplay = document.getElementById('bossHealth');
+        const bossHealthBar = document.getElementById('bossHealthBar');
+        
+        // Set canvas size
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        // Game variables
+        let score = 0;
+        let gameRunning = true;
+        let player = {
+            x: canvas.width / 2 - 25,
+            y: canvas.height - 60,
+            width: 50,
+            height: 50,
+            color: '#4CAF50'
+        };
+        
+        let balls = [];
+        let lastBallTime = 0;
+        let ballInterval = 1000; // milliseconds
+        let ballSpeed = 3;
+        
+        // Boss variables
+        let boss = {
+            active: false,
+            x: canvas.width / 2 - 50,
+            y: 50,
+            width: 100,
+            height: 100,
+            color: 'red',
+            health: 100,
+            maxHealth: 100,
+            speed: 2,
+            direction: 1,
+            lastShot: 0,
+            shotInterval: 1000,
+            projectiles: []
+        };
+        
+        // Event listeners
+        canvas.addEventListener('mousemove', movePlayer);
+        restartBtn.addEventListener('click', restartGame);
+        
+        // Game loop
+        function gameLoop(timestamp) {
+            if (!gameRunning) return;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Update and draw player
+            drawPlayer();
+            
+            // Spawn balls
+            if (timestamp - lastBallTime > ballInterval && !boss.active) {
+                spawnBall();
+                lastBallTime = timestamp;
+                
+                // Increase difficulty
+                if (score % 50 === 0 && ballInterval > 300) {
+                    ballInterval -= 50;
+                    ballSpeed += 0.5;
+                }
+            }
+            
+            // Update and draw balls
+            updateBalls();
+            
+            // Check for boss fight
+            if (score >= 500 && !boss.active) {
+                startBossFight();
+            }
+            
+            // Update and draw boss if active
+            if (boss.active) {
+                updateBoss(timestamp);
+                drawBoss();
+                updateBossProjectiles();
+            }
+            
+            // Continue game loop
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Player functions
+        function movePlayer(e) {
+            player.x = e.clientX - player.width / 2;
+            
+            // Keep player within canvas bounds
+            if (player.x < 0) player.x = 0;
+            if (player.x > canvas.width - player.width) {
+                player.x = canvas.width - player.width;
+            }
+        }
+        
+        function drawPlayer() {
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+        }
+        
+        // Ball functions
+        function spawnBall() {
+            const size = Math.random() * 30 + 20;
+            balls.push({
+                x: Math.random() * (canvas.width - size),
+                y: -size,
+                width: size,
+                height: size,
+                color: `hsl(${Math.random() * 360}, 70%, 50%)`,
+                speed: ballSpeed + Math.random() * 2
+            });
+        }
+        
+        function updateBalls() {
+            for (let i = balls.length - 1; i >= 0; i--) {
+                const ball = balls[i];
+                
+                // Update position
+                ball.y += ball.speed;
+                
+                // Draw ball
+                ctx.fillStyle = ball.color;
+                ctx.beginPath();
+                ctx.arc(ball.x + ball.width/2, ball.y + ball.height/2, ball.width/2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Check collision with player
+                if (
+                    ball.x < player.x + player.width &&
+                    ball.x + ball.width > player.x &&
+                    ball.y < player.y + player.height &&
+                    ball.y + ball.height > player.y
+                ) {
+                    gameOver();
+                    return;
+                }
+                
+                // Remove balls that are off screen
+                if (ball.y > canvas.height) {
+                    balls.splice(i, 1);
+                    score++;
+                    scoreDisplay.textContent = `Score: ${score}`;
+                }
+            }
+        }
+        
+        // Boss functions
+        function startBossFight() {
+            boss.active = true;
+            boss.health = boss.maxHealth;
+            bossHealthDisplay.textContent = `BOSS: ${boss.health}`;
+            bossHealthDisplay.style.display = 'block';
+            bossHealthBar.style.display = 'block';
+            updateBossHealthBar();
+            
+            // Clear all regular balls
+            balls = [];
+        }
+        
+        function updateBoss(timestamp) {
+            // Move boss side to side
+            boss.x += boss.speed * boss.direction;
+            
+            // Change direction at edges
+            if (boss.x <= 0) {
+                boss.direction = 1;
+            } else if (boss.x + boss.width >= canvas.width) {
+                boss.direction = -1;
+            }
+            
+            // Shoot projectiles
+            if (timestamp - boss.lastShot > boss.shotInterval) {
+                boss.projectiles.push({
+                    x: boss.x + boss.width/2 - 5,
+                    y: boss.y + boss.height,
+                    width: 10,
+                    height: 20,
+                    color: 'orange',
+                    speed: 5
+                });
+                boss.lastShot = timestamp;
+            }
+        }
+        
+        function drawBoss() {
+            ctx.fillStyle = boss.color;
+            ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
+            
+            // Draw boss eyes
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(boss.x + 25, boss.y + 30, 10, 0, Math.PI * 2);
+            ctx.arc(boss.x + 75, boss.y + 30, 10, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = 'black';
+            ctx.beginPath();
+            ctx.arc(boss.x + 25, boss.y + 30, 5, 0, Math.PI * 2);
+            ctx.arc(boss.x + 75, boss.y + 30, 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        function updateBossProjectiles() {
+            for (let i = boss.projectiles.length - 1; i >= 0; i--) {
+                const proj = boss.projectiles[i];
+                
+                // Update position
+                proj.y += proj.speed;
+                
+                // Draw projectile
+                ctx.fillStyle = proj.color;
+                ctx.fillRect(proj.x, proj.y, proj.width, proj.height);
+                
+                // Check collision with player
+                if (
+                    proj.x < player.x + player.width &&
+                    proj.x + proj.width > player.x &&
+                    proj.y < player.y + player.height &&
+                    proj.y + proj.height > player.y
+                ) {
+                    gameOver();
+                    return;
+                }
+                
+                // Remove projectiles that are off screen
+                if (proj.y > canvas.height) {
+                    boss.projectiles.splice(i, 1);
+                }
+            }
+        }
+        
+        function updateBossHealthBar() {
+            const healthPercent = (boss.health / boss.maxHealth) * 100;
+            document.getElementById('bossHealthBarFill').style.width = `${healthPercent}%`;
+            bossHealthDisplay.textContent = `BOSS: ${boss.health}`;
+        }
+        
+        // Game state functions
+        function gameOver() {
+            gameRunning = false;
+            finalScoreDisplay.textContent = `Score: ${score}`;
+            gameOverDisplay.style.display = 'block';
+        }
+        
+        function restartGame() {
+            // Reset game state
+            score = 0;
+            gameRunning = true;
+            balls = [];
+            boss.active = false;
+            boss.projectiles = [];
+            lastBallTime = 0;
+            ballInterval = 1000;
+            ballSpeed = 3;
+            
+            // Reset displays
+            scoreDisplay.textContent = `Score: ${score}`;
+            gameOverDisplay.style.display = 'none';
+            bossHealthDisplay.style.display = 'none';
+            bossHealthBar.style.display = 'none';
+            
+            // Start game loop
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Start the game
+        requestAnimationFrame(gameLoop);
+        
+        // Handle window resize
+        window.addEventListener('resize', function() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            
+            // Keep player on screen after resize
+            if (player.x > canvas.width - player.width) {
+                player.x = canvas.width - player.width;
+            }
+            player.y = canvas.height - 60;
+        });
+    </script>
+</body>
+</html>
